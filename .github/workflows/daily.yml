@@ -1,0 +1,29 @@
+name: Agent Football - Envoi 10h30
+
+on:
+  schedule:
+    - cron: '30 8 * * *'  # 10h30 heure de Paris (UTC+2)
+  workflow_dispatch:       # bouton manuel sur GitHub si besoin
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v3
+
+      - name: Installer Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances
+        run: pip install requests
+
+      - name: Lancer l'agent
+        env:
+          API_KEY:        ${{ secrets.API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID:        ${{ secrets.CHAT_ID }}
+        run: python bot.py
