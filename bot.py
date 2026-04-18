@@ -1,31 +1,31 @@
 # ============================================================
-# 🤖 AGENT IA v2 — BOT TELEGRAM + ENVOI AUTOMATIQUE 10h30
+# 🤖 AGENT IA v2 — VERSION GITHUB ACTIONS
+# ============================================================
+# Ce script tourne une fois, envoie les résultats sur Telegram
+# et s'arrête. GitHub Actions le relance chaque jour à 10h30.
 # ============================================================
 
 import requests
 import json
 import re
-import schedule
 import time
-import threading
+import os
 from datetime import date
 
 # ============================================================
-# ⚙️ CONFIGURATION — REMPLACE CES 4 VALEURS
+# ⚙️ CONFIGURATION — ces valeurs viennent des secrets GitHub
 # ============================================================
 
-API_KEY          = "0ddbb066bbf7c39510daa462270a4993"       # ta clé api-sports.io
-TELEGRAM_TOKEN   = "8185408435:AAFG8-SO_bmWnOAjOK9vkwITfrFNVf18PCo"       # donné par BotFather
-CHAT_ID          = "7430776953"              # ton identifiant Telegram
-HEURE_ENVOI      = "10:30"                    # heure d'envoi automatique
+API_KEY        = os.environ.get("API_KEY", "")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.environ.get("CHAT_ID", "")
 
 # ============================================================
-# ⚙️ CONFIG AGENT (inchangée)
+# ⚙️ CONFIG AGENT
 # ============================================================
 
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS  = {"x-apisports-key": API_KEY}
-TODAY    = date.today().strftime("%Y-%m-%d")
 
 TARGET_LEAGUES = {
     39:  "Premier League (Angleterre)",
@@ -65,47 +65,23 @@ api_calls = 0
 
 
 # ============================================================
-# 📲 MODULE TELEGRAM
+# 📲 TELEGRAM
 # ============================================================
 
 def send_telegram(message):
-    """Envoie un message Telegram (découpe si trop long)"""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    max_len = 4096
-    for i in range(0, len(message), max_len):
+    for i in range(0, len(message), 4096):
         try:
             requests.post(url, json={
                 "chat_id": CHAT_ID,
-                "text": message[i:i+max_len]
+                "text": message[i:i+4096]
             }, timeout=10)
         except Exception as e:
             print(f"⚠️ Erreur Telegram : {e}")
 
 
-def ecoute_commandes():
-    """Écoute les commandes /analyse envoyées sur Telegram"""
-    offset = None
-    while True:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-        params = {"timeout": 30}
-        if offset:
-            params["offset"] = offset
-        try:
-            resp = requests.get(url, params=params, timeout=35)
-            data = resp.json()
-            for update in data.get("result", []):
-                offset = update["update_id"] + 1
-                texte = update.get("message", {}).get("text", "")
-                if texte.strip() == "/analyse":
-                    send_telegram("🔄 Analyse en cours, patiente quelques secondes...")
-                    lancer_analyse()
-        except Exception as e:
-            print(f"⚠️ Erreur polling : {e}")
-            time.sleep(5)
-
-
 # ============================================================
-# 📡 MODULE API
+# 📡 API
 # ============================================================
 
 def api_call(endpoint, params):
@@ -147,7 +123,7 @@ def get_injuries(team_id, season=2025):
 
 
 # ============================================================
-# 📊 MODULE TRAITEMENT
+# 📊 TRAITEMENT
 # ============================================================
 
 def get_xg_understat(league_id, team_name, season=2024):
@@ -163,10 +139,9 @@ def get_xg_understat(league_id, team_name, season=2024):
         raw = match.group(1).encode('utf-8').decode('unicode_escape')
         teams_data = json.loads(raw)
         team_key = None
-        name_lower = team_name.lower()
         for key, data in teams_data.items():
             understat_name = data.get("title", "").lower()
-            if name_lower in understat_name or understat_name in name_lower:
+            if team_name.lower() in understat_name or understat_name in team_name.lower():
                 team_key = key
                 break
         if not team_key:
@@ -174,7 +149,7 @@ def get_xg_understat(league_id, team_name, season=2024):
         history = teams_data[team_key].get("history", [])
         if not history:
             return None, None
-        xg_for = round(sum(float(m.get("xG", 0)) for m in history) / len(history), 2)
+        xg_for     = round(sum(float(m.get("xG",  0)) for m in history) / len(history), 2)
         xg_against = round(sum(float(m.get("xGA", 0)) for m in history) / len(history), 2)
         return xg_for, xg_against
     except:
@@ -188,20 +163,20 @@ def extract_stats(team_stats, home_or_away):
     if not team_stats:
         return data
     try:
-        gf = team_stats.get("goals", {}).get("for", {}).get("average", {})
-        data["goals_for_avg"] = float(gf.get(home_or_away, gf.get("total", 0)) or 0)
+        gf = team_stats.get("goals", {}).get("for",     {}).get("average", {})
         ga = team_stats.get("goals", {}).get("against", {}).get("average", {})
+        data["goals_for_avg"]     = float(gf.get(home_or_away, gf.get("total", 0)) or 0)
         data["goals_against_avg"] = float(ga.get(home_or_away, ga.get("total", 0)) or 0)
-        data["played"] = int(team_stats.get("fixtures", {}).get("played", {}).get("total", 0) or 0)
-        data["clean_sheets"] = int(team_stats.get("clean_sheet", {}).get("total", 0) or 0)
-        data["failed_to_score"] = int(team_stats.get("failed_to_score", {}).get("total", 0) or 0)
+        data["played"]            = int(team_stats.get("fixtures",        {}).get("played",  {}).get("total", 0) or 0)
+        data["clean_sheets"]      = int(team_stats.get("clean_sheet",     {}).get("total", 0) or 0)
+        data["failed_to_score"]   = int(team_stats.get("failed_to_score", {}).get("total", 0) or 0)
         form_full = team_stats.get("form", "")
         data["form"] = form_full[-5:] if form_full else "N/A"
         if data["played"] > 0:
-            scores_pct = 1 - (data["failed_to_score"] / data["played"])
-            concedes_pct = 1 - (data["clean_sheets"] / data["played"])
-            data["btts_pct"] = round(scores_pct * concedes_pct * 100, 1)
-            avg_total = data["goals_for_avg"] + data["goals_against_avg"]
+            scores_pct   = 1 - (data["failed_to_score"] / data["played"])
+            concedes_pct = 1 - (data["clean_sheets"]    / data["played"])
+            data["btts_pct"]   = round(scores_pct * concedes_pct * 100, 1)
+            avg_total          = data["goals_for_avg"] + data["goals_against_avg"]
             data["over15_pct"] = round(min(avg_total / 2.5, 1.0) * 100, 1)
     except:
         pass
@@ -213,7 +188,7 @@ def extract_xg_api(prediction, side):
         return "N/A"
     try:
         goals = prediction.get("predictions", {}).get("goals", {})
-        val = goals.get(side, None)
+        val   = goals.get(side, None)
         return str(val).replace("-", "~") if val else "N/A"
     except:
         return "N/A"
@@ -229,45 +204,22 @@ def extract_absents(injuries_data):
 
 def passes_filter(home_data, away_data, prediction):
     score = 0
-    reasons = []
-
-    combined_avg = home_data["goals_for_avg"] + away_data["goals_for_avg"]
-    if combined_avg >= FILTER_THRESHOLDS["combined_goals_avg_min"]:
+    if home_data["goals_for_avg"] + away_data["goals_for_avg"] >= FILTER_THRESHOLDS["combined_goals_avg_min"]:
         score += 1
-        reasons.append(f"✅ Attaque combinée : {combined_avg:.2f}")
-    else:
-        reasons.append(f"❌ Attaque faible : {combined_avg:.2f}")
-
-    avg_btts = (home_data["btts_pct"] + away_data["btts_pct"]) / 2
-    if avg_btts >= FILTER_THRESHOLDS["btts_pct_min"]:
+    if (home_data["btts_pct"] + away_data["btts_pct"]) / 2 >= FILTER_THRESHOLDS["btts_pct_min"]:
         score += 1
-        reasons.append(f"✅ BTTS : {avg_btts:.1f}%")
-    else:
-        reasons.append(f"❌ BTTS faible : {avg_btts:.1f}%")
-
-    avg_over15 = (home_data["over15_pct"] + away_data["over15_pct"]) / 2
-    if avg_over15 >= FILTER_THRESHOLDS["over15_pct_min"]:
+    if (home_data["over15_pct"] + away_data["over15_pct"]) / 2 >= FILTER_THRESHOLDS["over15_pct_min"]:
         score += 1
-        reasons.append(f"✅ Over 1.5 : {avg_over15:.1f}%")
-    else:
-        reasons.append(f"❌ Over 1.5 faible : {avg_over15:.1f}%")
-
     if prediction:
         try:
-            goals = prediction.get("predictions", {}).get("goals", {})
-            xg_total = abs(float(str(goals.get("home", "0")).replace("-", ""))) + \
-                       abs(float(str(goals.get("away", "0")).replace("-", "")))
-            if xg_total >= FILTER_THRESHOLDS["xg_total_min"]:
+            goals  = prediction.get("predictions", {}).get("goals", {})
+            xg_tot = abs(float(str(goals.get("home", "0")).replace("-", ""))) + \
+                     abs(float(str(goals.get("away", "0")).replace("-", "")))
+            if xg_tot >= FILTER_THRESHOLDS["xg_total_min"]:
                 score += 1
-                reasons.append(f"✅ xG total : {xg_total:.1f}")
-            else:
-                reasons.append(f"❌ xG faible : {xg_total:.1f}")
         except:
-            reasons.append("⚠️ xG non disponible")
-    else:
-        reasons.append("⚠️ Prédiction non disponible")
-
-    return score >= 3, score, 4, reasons
+            pass
+    return score >= 3
 
 
 def build_template(match_info, home_data, away_data, prediction,
@@ -312,27 +264,25 @@ Contexte :
 # ============================================================
 
 def lancer_analyse():
-    global api_calls
-    api_calls = 0
-    today = date.today().strftime("%Y-%m-%d")
-
+    today    = date.today().strftime("%Y-%m-%d")
     fixtures = get_fixtures()
+
     if not fixtures:
-        send_telegram("❌ Aucun match trouvé aujourd'hui.")
+        send_telegram("❌ Aucun match trouvé aujourd'hui dans les ligues ciblées.")
         return
 
-    send_telegram(f"📅 {today} — {len(fixtures)} matchs en cours d'analyse...")
+    send_telegram(f"🤖 Analyse du {today}\n📊 {len(fixtures)} matchs en cours d'analyse...")
 
     retenus = []
 
     for fixture in fixtures:
-        fid    = fixture["fixture"]["id"]
-        home   = fixture["teams"]["home"]
-        away   = fixture["teams"]["away"]
-        league = fixture["league"]
-        heure  = fixture["fixture"]["date"][11:16]
+        fid         = fixture["fixture"]["id"]
+        home        = fixture["teams"]["home"]
+        away        = fixture["teams"]["away"]
+        league      = fixture["league"]
+        heure       = fixture["fixture"]["date"][11:16]
         league_name = TARGET_LEAGUES.get(league["id"], league["name"])
-        season = league.get("season", 2025)
+        season      = league.get("season", 2025)
 
         home_stats = get_team_stats(home["id"], league["id"], season)
         away_stats = get_team_stats(away["id"], league["id"], season)
@@ -342,14 +292,9 @@ def lancer_analyse():
         home_data = extract_stats(home_stats, "home")
         away_data = extract_stats(away_stats, "away")
 
-        passes, score, total, _ = passes_filter(home_data, away_data, prediction)
-
-        if passes:
-            home_injuries = get_injuries(home["id"], season)
-            away_injuries = get_injuries(away["id"], season)
-            home_absents  = extract_absents(home_injuries)
-            away_absents  = extract_absents(away_injuries)
-
+        if passes_filter(home_data, away_data, prediction):
+            home_absents = extract_absents(get_injuries(home["id"], season))
+            away_absents = extract_absents(get_injuries(away["id"], season))
             xg_hf, xg_ha = get_xg_understat(league["id"], home["name"], season - 1)
             xg_af, xg_aa = get_xg_understat(league["id"], away["name"], season - 1)
 
@@ -357,15 +302,14 @@ def lancer_analyse():
                 "home": home["name"], "away": away["name"],
                 "league": league_name, "date": today, "time": heure
             }
-            template = build_template(
+            retenus.append(build_template(
                 match_info, home_data, away_data, prediction,
                 home_absents, away_absents,
                 xg_hf, xg_ha, xg_af, xg_aa
-            )
-            retenus.append(template)
+            ))
 
     if retenus:
-        send_telegram(f"✅ {len(retenus)} match(s) retenu(s) ce jour :")
+        send_telegram(f"✅ {len(retenus)} match(s) retenu(s) aujourd'hui :")
         for t in retenus:
             send_telegram(t)
         send_telegram(
@@ -379,22 +323,12 @@ def lancer_analyse():
     else:
         send_telegram("⚠️ Aucun match ne passe les filtres aujourd'hui.")
 
+    print(f"✅ Terminé — {len(retenus)} match(s) | {api_calls} appels API")
+
 
 # ============================================================
-# ▶️ DÉMARRAGE
+# ▶️ LANCEMENT
 # ============================================================
 
 if __name__ == "__main__":
-    print("✅ Bot démarré")
-    send_telegram(f"✅ Bot démarré ! Envoi automatique chaque jour à {HEURE_ENVOI}.\nTape /analyse pour une analyse manuelle.")
-
-    # Planification automatique
-    schedule.every().day.at(HEURE_ENVOI).do(lancer_analyse)
-
-    # Écoute des commandes /analyse en arrière-plan
-    threading.Thread(target=ecoute_commandes, daemon=True).start()
-
-    # Boucle principale
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+    lancer_analyse()
