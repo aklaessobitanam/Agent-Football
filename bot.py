@@ -1,9 +1,6 @@
 # ============================================================
 # 🤖 AGENT IA v2 — VERSION GITHUB ACTIONS
 # ============================================================
-# Ce script tourne une fois, envoie les résultats sur Telegram
-# et s'arrête. GitHub Actions le relance chaque jour à 10h30.
-# ============================================================
 
 import requests
 import json
@@ -13,16 +10,12 @@ import os
 from datetime import date
 
 # ============================================================
-# ⚙️ CONFIGURATION — ces valeurs viennent des secrets GitHub
+# ⚙️ CONFIGURATION
 # ============================================================
 
 API_KEY        = os.environ.get("API_KEY", "")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID        = os.environ.get("CHAT_ID", "")
-
-# ============================================================
-# ⚙️ CONFIG AGENT
-# ============================================================
 
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS  = {"x-apisports-key": API_KEY}
@@ -46,12 +39,52 @@ TARGET_LEAGUES = {
     848: "Conference League",
 }
 
-FILTER_THRESHOLDS = {
+# ============================================================
+# 🎯 SEUILS PAR LIGUE
+# ============================================================
+# Chaque ligue a ses propres seuils basés sur sa réalité statistique.
+# Bundesliga/Eredivisie = offensif → seuils hauts
+# Serie A/Ligue 1 = défensif → seuils bas
+# Seuils par défaut utilisés pour les ligues non listées.
+# ============================================================
+
+DEFAULT_THRESHOLDS = {
     "btts_pct_min": 55,
     "over15_pct_min": 70,
     "xg_total_min": 2.2,
     "combined_goals_avg_min": 2.0
 }
+
+LEAGUE_THRESHOLDS = {
+    # ── Très offensif ──
+    78:  {"btts_pct_min": 62, "over15_pct_min": 78, "xg_total_min": 2.6, "combined_goals_avg_min": 2.4},  # Bundesliga
+    88:  {"btts_pct_min": 62, "over15_pct_min": 78, "xg_total_min": 2.6, "combined_goals_avg_min": 2.4},  # Eredivisie
+    119: {"btts_pct_min": 60, "over15_pct_min": 75, "xg_total_min": 2.5, "combined_goals_avg_min": 2.3},  # Superliga Danemark
+    218: {"btts_pct_min": 60, "over15_pct_min": 75, "xg_total_min": 2.5, "combined_goals_avg_min": 2.3},  # Eliteserien Norvège
+
+    # ── Offensif ──
+    39:  {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Premier League
+    179: {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Scottish Premiership
+    113: {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Allsvenskan Suède
+
+    # ── Moyen ──
+    140: {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # La Liga
+    144: {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Jupiler Belgique
+    203: {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Süper Lig Turquie
+    94:  {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Primeira Liga Portugal
+    2:   {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.3, "combined_goals_avg_min": 2.1},  # Champions League
+    3:   {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Europa League
+    848: {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Conference League
+
+    # ── Défensif ──
+    135: {"btts_pct_min": 50, "over15_pct_min": 65, "xg_total_min": 2.0, "combined_goals_avg_min": 1.8},  # Serie A
+    61:  {"btts_pct_min": 50, "over15_pct_min": 65, "xg_total_min": 2.0, "combined_goals_avg_min": 1.8},  # Ligue 1
+}
+
+def get_thresholds(league_id):
+    """Retourne les seuils adaptés à la ligue, ou les seuils par défaut."""
+    return LEAGUE_THRESHOLDS.get(league_id, DEFAULT_THRESHOLDS)
+
 
 UNDERSTAT_LEAGUE_MAP = {
     39:  "EPL",
@@ -202,29 +235,33 @@ def extract_absents(injuries_data):
     return ", ".join(absents) if absents else "Aucun absent signalé"
 
 
-def passes_filter(home_data, away_data, prediction):
+def passes_filter(home_data, away_data, prediction, league_id):
+    """Filtre avec seuils adaptés à la ligue."""
+    t = get_thresholds(league_id)
     score = 0
-    if home_data["goals_for_avg"] + away_data["goals_for_avg"] >= FILTER_THRESHOLDS["combined_goals_avg_min"]:
+
+    if home_data["goals_for_avg"] + away_data["goals_for_avg"] >= t["combined_goals_avg_min"]:
         score += 1
-    if (home_data["btts_pct"] + away_data["btts_pct"]) / 2 >= FILTER_THRESHOLDS["btts_pct_min"]:
+    if (home_data["btts_pct"] + away_data["btts_pct"]) / 2 >= t["btts_pct_min"]:
         score += 1
-    if (home_data["over15_pct"] + away_data["over15_pct"]) / 2 >= FILTER_THRESHOLDS["over15_pct_min"]:
+    if (home_data["over15_pct"] + away_data["over15_pct"]) / 2 >= t["over15_pct_min"]:
         score += 1
     if prediction:
         try:
             goals  = prediction.get("predictions", {}).get("goals", {})
             xg_tot = abs(float(str(goals.get("home", "0")).replace("-", ""))) + \
                      abs(float(str(goals.get("away", "0")).replace("-", "")))
-            if xg_tot >= FILTER_THRESHOLDS["xg_total_min"]:
+            if xg_tot >= t["xg_total_min"]:
                 score += 1
         except:
             pass
+
     return score >= 3
 
 
 def build_template(match_info, home_data, away_data, prediction,
                    home_absents, away_absents,
-                   xg_hf, xg_ha, xg_af, xg_aa):
+                   xg_hf, xg_ha, xg_af, xg_aa, thresholds):
 
     def fmt(val, fallback):
         return f"{val} (Understat)" if val is not None else (fallback or "N/A")
@@ -234,6 +271,7 @@ def build_template(match_info, home_data, away_data, prediction,
 Match : {match_info['home']} vs {match_info['away']}
 Ligue : {match_info['league']}
 Date  : {match_info['date']} | Heure : {match_info['time']}
+Seuils ligue : BTTS≥{thresholds['btts_pct_min']}% | Over1.5≥{thresholds['over15_pct_min']}% | xG≥{thresholds['xg_total_min']}
 ========================================
 {match_info['home']} (Domicile) :
 - Buts marqués (moy.)   : {home_data['goals_for_avg']:.2f}
@@ -281,31 +319,33 @@ def lancer_analyse():
         away        = fixture["teams"]["away"]
         league      = fixture["league"]
         heure       = fixture["fixture"]["date"][11:16]
-        league_name = TARGET_LEAGUES.get(league["id"], league["name"])
+        league_id   = league["id"]
+        league_name = TARGET_LEAGUES.get(league_id, league["name"])
         season      = league.get("season", 2025)
 
-        home_stats = get_team_stats(home["id"], league["id"], season)
-        away_stats = get_team_stats(away["id"], league["id"], season)
+        home_stats = get_team_stats(home["id"], league_id, season)
+        away_stats = get_team_stats(away["id"], league_id, season)
         prediction = get_prediction(fid)
         time.sleep(0.3)
 
         home_data = extract_stats(home_stats, "home")
         away_data = extract_stats(away_stats, "away")
 
-        if passes_filter(home_data, away_data, prediction):
+        if passes_filter(home_data, away_data, prediction, league_id):
             home_absents = extract_absents(get_injuries(home["id"], season))
             away_absents = extract_absents(get_injuries(away["id"], season))
-            xg_hf, xg_ha = get_xg_understat(league["id"], home["name"], season - 1)
-            xg_af, xg_aa = get_xg_understat(league["id"], away["name"], season - 1)
+            xg_hf, xg_ha = get_xg_understat(league_id, home["name"], season - 1)
+            xg_af, xg_aa = get_xg_understat(league_id, away["name"], season - 1)
 
             match_info = {
                 "home": home["name"], "away": away["name"],
                 "league": league_name, "date": today, "time": heure
             }
+            thresholds = get_thresholds(league_id)
             retenus.append(build_template(
                 match_info, home_data, away_data, prediction,
                 home_absents, away_absents,
-                xg_hf, xg_ha, xg_af, xg_aa
+                xg_hf, xg_ha, xg_af, xg_aa, thresholds
             ))
 
     if retenus:
