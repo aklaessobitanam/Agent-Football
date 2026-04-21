@@ -37,15 +37,19 @@ TARGET_LEAGUES = {
     2:   "Champions League",
     3:   "Europa League",
     848: "Conference League",
+    # ── Deuxièmes divisions ──
+    40:  "Championship (Angleterre D2)",
+    79:  "2. Bundesliga (Allemagne D2)",
+    136: "Serie B (Italie D2)",
+    62:  "Ligue 2 (France D2)",
+    141: "Segunda División (Espagne D2)",
+    95:  "Liga Portugal 2 (Portugal D2)",
+    204: "TFF First League (Turquie D2)",
+    89:  "Eerste Divisie (Pays-Bas D2)",
 }
 
 # ============================================================
 # 🎯 SEUILS PAR LIGUE
-# ============================================================
-# Chaque ligue a ses propres seuils basés sur sa réalité statistique.
-# Bundesliga/Eredivisie = offensif → seuils hauts
-# Serie A/Ligue 1 = défensif → seuils bas
-# Seuils par défaut utilisés pour les ligues non listées.
 # ============================================================
 
 DEFAULT_THRESHOLDS = {
@@ -61,11 +65,14 @@ LEAGUE_THRESHOLDS = {
     88:  {"btts_pct_min": 62, "over15_pct_min": 78, "xg_total_min": 2.6, "combined_goals_avg_min": 2.4},  # Eredivisie
     119: {"btts_pct_min": 60, "over15_pct_min": 75, "xg_total_min": 2.5, "combined_goals_avg_min": 2.3},  # Superliga Danemark
     218: {"btts_pct_min": 60, "over15_pct_min": 75, "xg_total_min": 2.5, "combined_goals_avg_min": 2.3},  # Eliteserien Norvège
+    79:  {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # 2. Bundesliga
+    89:  {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Eerste Divisie
 
     # ── Offensif ──
     39:  {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Premier League
     179: {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Scottish Premiership
     113: {"btts_pct_min": 58, "over15_pct_min": 73, "xg_total_min": 2.4, "combined_goals_avg_min": 2.2},  # Allsvenskan Suède
+    40:  {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Championship
 
     # ── Moyen ──
     140: {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # La Liga
@@ -75,14 +82,18 @@ LEAGUE_THRESHOLDS = {
     2:   {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.3, "combined_goals_avg_min": 2.1},  # Champions League
     3:   {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Europa League
     848: {"btts_pct_min": 55, "over15_pct_min": 70, "xg_total_min": 2.2, "combined_goals_avg_min": 2.0},  # Conference League
+    141: {"btts_pct_min": 52, "over15_pct_min": 67, "xg_total_min": 2.1, "combined_goals_avg_min": 1.9},  # Segunda División
+    95:  {"btts_pct_min": 52, "over15_pct_min": 67, "xg_total_min": 2.1, "combined_goals_avg_min": 1.9},  # Liga Portugal 2
+    204: {"btts_pct_min": 52, "over15_pct_min": 67, "xg_total_min": 2.1, "combined_goals_avg_min": 1.9},  # TFF First League
 
     # ── Défensif ──
     135: {"btts_pct_min": 50, "over15_pct_min": 65, "xg_total_min": 2.0, "combined_goals_avg_min": 1.8},  # Serie A
     61:  {"btts_pct_min": 50, "over15_pct_min": 65, "xg_total_min": 2.0, "combined_goals_avg_min": 1.8},  # Ligue 1
+    136: {"btts_pct_min": 48, "over15_pct_min": 63, "xg_total_min": 1.9, "combined_goals_avg_min": 1.7},  # Serie B
+    62:  {"btts_pct_min": 48, "over15_pct_min": 63, "xg_total_min": 1.9, "combined_goals_avg_min": 1.7},  # Ligue 2
 }
 
 def get_thresholds(league_id):
-    """Retourne les seuils adaptés à la ligue, ou les seuils par défaut."""
     return LEAGUE_THRESHOLDS.get(league_id, DEFAULT_THRESHOLDS)
 
 
@@ -236,10 +247,8 @@ def extract_absents(injuries_data):
 
 
 def passes_filter(home_data, away_data, prediction, league_id):
-    """Filtre avec seuils adaptés à la ligue."""
     t = get_thresholds(league_id)
     score = 0
-
     if home_data["goals_for_avg"] + away_data["goals_for_avg"] >= t["combined_goals_avg_min"]:
         score += 1
     if (home_data["btts_pct"] + away_data["btts_pct"]) / 2 >= t["btts_pct_min"]:
@@ -255,7 +264,6 @@ def passes_filter(home_data, away_data, prediction, league_id):
                 score += 1
         except:
             pass
-
     return score >= 3
 
 
