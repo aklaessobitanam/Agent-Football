@@ -1,8 +1,8 @@
-name: Agent Football - Envoi 10h30
+name: Agent Football - Envoi 00h30
 
 on:
   schedule:
-    - cron: '30 8 * * *'  # 10h30 heure de Paris (UTC+2)
+    - cron: '30 0 * * *'  # 00h30 heure de Lomé (UTC+0)
   workflow_dispatch:       # bouton manuel sur GitHub si besoin
 
 jobs:
