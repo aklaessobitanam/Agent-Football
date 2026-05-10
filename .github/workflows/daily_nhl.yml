@@ -1,0 +1,29 @@
+name: Agent NHL - Envoi 15h00
+ 
+on:
+  schedule:
+    - cron: '0 15 * * *'  # 15h00 heure de Lomé (UTC+0)
+  workflow_dispatch:       # bouton manuel sur GitHub si besoin
+ 
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v3
+ 
+      - name: Installer Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+ 
+      - name: Installer les dépendances
+        run: pip install requests
+ 
+      - name: Lancer l'agent NHL
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID:        ${{ secrets.CHAT_ID }}
+        run: python bot_nhl.py
+ 
