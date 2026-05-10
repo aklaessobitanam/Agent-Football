@@ -18,7 +18,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID        = os.environ.get("CHAT_ID", "")
 
 BASE_URL = "https://api.balldontlie.io/v1"
-SAISON   = 2024  # saison NBA 2024-25
+SAISON   = 2025  # saison NBA 2025-26
 
 # ============================================================
 # 🎯 SEUILS DE FILTRAGE NBA
