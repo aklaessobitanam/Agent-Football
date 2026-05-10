@@ -24,9 +24,9 @@ BASE_URL = "https://api-web.nhle.com/v1"
 # ============================================================
 
 FILTER = {
-    "total_avg_min": 5.5,      # Total buts moyen combiné minimum
-    "over55_pct_min": 45.0,    # % matchs Over 5.5 minimum
-    "goals_scored_min": 2.8,   # Une équipe doit marquer au moins 2.8 buts/match
+    "total_avg_min": 5.0,
+    "over45_pct_min": 55.0,
+    "goals_scored_min": 2.8,
 }
 
 
@@ -51,7 +51,6 @@ def send_telegram(message):
 # ============================================================
 
 def get_games_today():
-    """Récupère les matchs NHL du jour"""
     today = date.today().strftime("%Y-%m-%d")
     try:
         resp = requests.get(f"{BASE_URL}/schedule/{today}", timeout=10)
@@ -68,10 +67,6 @@ def get_games_today():
 
 
 def get_all_standings():
-    """
-    Récupère les stats de toutes les équipes en une seule requête.
-    Retourne un dictionnaire {teamAbbrev: stats}
-    """
     try:
         resp = requests.get(f"{BASE_URL}/standings/now", timeout=10)
         standings = resp.json().get("standings", [])
@@ -97,9 +92,8 @@ def get_all_standings():
                 "games":       gp,
                 "wins":        team.get("wins", 0),
                 "losses":      team.get("losses", 0),
-                # Estimation Over 5.5 et Over 6.5 basée sur la moyenne
+                "over45_pct":  round(min((avg_total - 3.5) / 3.0, 1.0) * 100, 1),
                 "over55_pct":  round(min((avg_total - 4.5) / 3.0, 1.0) * 100, 1),
-                "over65_pct":  round(min((avg_total - 5.0) / 3.5, 1.0) * 100, 1),
             }
 
         print(f"✅ Stats récupérées pour {len(stats_by_abbrev)} équipes NHL")
@@ -115,23 +109,19 @@ def get_all_standings():
 # ============================================================
 
 def passes_filter(home_stats, away_stats):
-    """Retourne True si le match est intéressant pour Over/Under buts"""
     if not home_stats or not away_stats:
         return False
 
     score = 0
 
-    # Check 1 : Total buts moyen combiné
     combined = (home_stats["avg_total"] + away_stats["avg_total"]) / 2
     if combined >= FILTER["total_avg_min"]:
         score += 1
 
-    # Check 2 : % Over 5.5 combiné
-    avg_over55 = (home_stats["over55_pct"] + away_stats["over55_pct"]) / 2
-    if avg_over55 >= FILTER["over55_pct_min"]:
+    avg_over45 = (home_stats["over45_pct"] + away_stats["over45_pct"]) / 2
+    if avg_over45 >= FILTER["over45_pct_min"]:
         score += 1
 
-    # Check 3 : Au moins une équipe attaque fort
     if max(home_stats["avg_scored"], away_stats["avg_scored"]) >= FILTER["goals_scored_min"]:
         score += 1
 
@@ -158,8 +148,8 @@ Date      : {match_info['date']} | Heure : {match_info['time']} ET
 - Buts marqués / match (moy.)   : {home_stats['avg_scored']}
 - Buts encaissés / match (moy.) : {home_stats['avg_allowed']}
 - Total buts / match (moy.)     : {home_stats['avg_total']}
+- Over 4.5 buts (estimation)    : {home_stats['over45_pct']}%
 - Over 5.5 buts (estimation)    : {home_stats['over55_pct']}%
-- Over 6.5 buts (estimation)    : {home_stats['over65_pct']}%
 - Bilan saison                  : {home_stats['wins']}V / {home_stats['losses']}D
 - Matchs analysés               : {home_stats['games']}
 
@@ -167,8 +157,8 @@ Date      : {match_info['date']} | Heure : {match_info['time']} ET
 - Buts marqués / match (moy.)   : {away_stats['avg_scored']}
 - Buts encaissés / match (moy.) : {away_stats['avg_allowed']}
 - Total buts / match (moy.)     : {away_stats['avg_total']}
+- Over 4.5 buts (estimation)    : {away_stats['over45_pct']}%
 - Over 5.5 buts (estimation)    : {away_stats['over55_pct']}%
-- Over 6.5 buts (estimation)    : {away_stats['over65_pct']}%
 - Bilan saison                  : {away_stats['wins']}V / {away_stats['losses']}D
 - Matchs analysés               : {away_stats['games']}
 
@@ -183,14 +173,13 @@ Synthèse :
 # ============================================================
 
 def lancer_analyse():
-    today  = date.today().strftime("%Y-%m-%d")
-    games  = get_games_today()
+    today = date.today().strftime("%Y-%m-%d")
+    games = get_games_today()
 
     if not games:
         send_telegram("🏒 Aucun match NHL aujourd'hui.")
         return
 
-    # Une seule requête pour toutes les stats des équipes
     all_stats = get_all_standings()
 
     if not all_stats:
@@ -232,7 +221,7 @@ def lancer_analyse():
         send_telegram(
             "📎 Analyse ces matchs NHL pour Over/Under buts.\n"
             "Pour chaque match :\n"
-            "1. Ligne recommandée (Over 5.5 ou Over 6.5)\n"
+            "1. Ligne recommandée (Over 4.5 ou Over 5.5)\n"
             "2. Probabilité Over + confiance (Fort / Moyen / Faible)\n"
             "3. Probabilité Under + confiance\n"
             "4. Points forts et risques\n"
